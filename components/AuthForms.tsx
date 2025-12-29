@@ -42,11 +42,13 @@ const AuthForms: React.FC<AuthFormsProps> = ({ mode, onAuthSuccess }) => {
           return;
         }
 
+        // Fix: Added missing required role property
         const newUser: User = {
           id: Math.random().toString(36).substr(2, 9),
           name: formData.name,
           email: formData.email,
           password: formData.password,
+          role: 'patient',
           createdAt: new Date().toISOString()
         };
 

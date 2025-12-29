@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { SERVICES, DOCTORS } from '../constants';
+import { SERVICES, DOCTORS, BEDS, BLOGS } from '../constants';
 import * as Icons from 'lucide-react';
 
 export const AboutSection: React.FC = () => (
@@ -79,8 +79,66 @@ export const ServicesSection: React.FC = () => (
   </section>
 );
 
+export const BedAvailabilitySection: React.FC = () => (
+  <section className="py-24 bg-white border-y border-slate-100">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="text-center mb-12">
+        <h2 className="text-3xl font-black text-apollo-blue uppercase tracking-tighter">Real-time Bed Availability</h2>
+        <p className="text-slate-500 mt-2">Transparent tracking for emergency and general admissions.</p>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        {BEDS.map((bed, idx) => (
+          <div key={idx} className="bg-apollo-grey p-8 rounded-xl text-center border border-slate-200">
+            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">{bed.department}</h4>
+            <div className="text-4xl font-black text-apollo-blue mb-2">{bed.total - bed.occupied}</div>
+            <p className="text-[10px] font-bold text-apollo-red uppercase">Available Beds</p>
+            <div className="mt-4 h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+               <div 
+                className="h-full bg-apollo-blue" 
+                style={{ width: `${(bed.occupied / bed.total) * 100}%` }} 
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+export const BlogSection: React.FC = () => (
+  <section className="py-24 bg-apollo-grey">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+       <div className="flex justify-between items-end mb-12">
+          <div>
+            <span className="text-apollo-red font-black uppercase text-xs tracking-widest">Health Library</span>
+            <h2 className="text-3xl font-black text-apollo-blue uppercase tracking-tighter mt-2">Medical Insights</h2>
+          </div>
+          <button className="text-apollo-blue font-black text-xs uppercase tracking-widest hover:text-apollo-red transition-colors">View All Posts</button>
+       </div>
+       <div className="grid md:grid-cols-2 gap-8">
+          {BLOGS.map(blog => (
+            <div key={blog.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all flex flex-col md:flex-row border border-slate-100">
+              <img src={blog.image} alt={blog.title} className="w-full md:w-48 h-48 object-cover" />
+              <div className="p-8">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{blog.date}</span>
+                <h3 className="text-xl font-black text-apollo-blue mt-2 mb-4 uppercase leading-tight">{blog.title}</h3>
+                <p className="text-slate-500 text-sm mb-6 line-clamp-2">{blog.excerpt}</p>
+                <div className="flex items-center space-x-3">
+                   <div className="w-8 h-8 rounded-full bg-apollo-blue/10 flex items-center justify-center text-apollo-blue">
+                      <Icons.User className="w-4 h-4" />
+                   </div>
+                   <span className="text-xs font-bold text-slate-600">{blog.author}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+       </div>
+    </div>
+  </section>
+);
+
 export const DoctorsSection: React.FC = () => (
-  <section className="py-24 bg-white overflow-hidden">
+  <section id="doctors" className="py-24 bg-white overflow-hidden">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-6">
         <div className="max-w-xl">
@@ -107,6 +165,11 @@ export const DoctorsSection: React.FC = () => (
               <span className="text-apollo-red font-black text-[10px] uppercase tracking-[0.2em] mb-2 block">{doctor.specialty}</span>
               <h3 className="text-2xl font-black text-apollo-blue mb-4 uppercase tracking-tighter leading-none">{doctor.name}</h3>
               <p className="text-slate-500 text-sm leading-relaxed mb-6">{doctor.description}</p>
+              <div className="flex items-center space-x-2 mb-6">
+                <Icons.Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                <span className="text-xs font-black text-apollo-blue">{doctor.rating}</span>
+                <span className="text-xs text-slate-400">({doctor.reviews} Reviews)</span>
+              </div>
               <button className="w-full bg-white border border-apollo-blue text-apollo-blue py-3 rounded text-[11px] font-black uppercase tracking-widest hover:bg-apollo-blue hover:text-white transition-all">
                 Book Appointment
               </button>

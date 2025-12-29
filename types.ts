@@ -4,6 +4,7 @@ export interface User {
   name: string;
   email: string;
   password?: string;
+  role: 'patient' | 'admin';
   createdAt: string;
 }
 
@@ -16,6 +17,9 @@ export interface Enrollment {
   dob: string;
   gender: 'male' | 'female' | 'other';
   department: string;
+  doctorId?: number;
+  timeSlot?: string;
+  paymentStatus: 'pending' | 'paid';
   message: string;
   status: 'pending' | 'confirmed' | 'cancelled';
   createdAt: string;
@@ -26,6 +30,7 @@ export interface Service {
   title: string;
   description: string;
   icon: string;
+  longDescription?: string;
 }
 
 export interface Doctor {
@@ -34,4 +39,31 @@ export interface Doctor {
   specialty: string;
   image: string;
   description: string;
+  rating: number;
+  reviews: number;
+  timings: string;
+}
+
+export interface LabReport {
+  id: string;
+  userId: string;
+  testName: string;
+  date: string;
+  fileUrl: string;
+  status: 'available' | 'processing';
+}
+
+export interface BedStatus {
+  department: string;
+  total: number;
+  occupied: number;
+}
+
+export interface BlogPost {
+  id: number;
+  title: string;
+  excerpt: string;
+  author: string;
+  date: string;
+  image: string;
 }

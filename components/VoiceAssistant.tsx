@@ -11,12 +11,16 @@ import {
   Activity, 
   User,
   Bot,
-  Terminal
+  Terminal,
+  SendHorizontal,
+  AlertCircle,
+  PhoneCall,
+  ShieldAlert,
+  UserCheck
 } from 'lucide-react';
-import { SERVICES, DOCTORS } from '../constants';
+import { SERVICES, DOCTORS, BEDS } from '../constants';
 
-// --- Audio Encoding & Decoding Helpers ---
-
+// --- Audio Helpers ---
 function decode(base64: string): Uint8Array {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -74,15 +78,19 @@ interface LogEntry {
 
 interface VoiceAssistantProps {
   pageContext?: string;
+  onNavigate?: (path: string) => void;
 }
 
-const VoiceAssistant: React.FC<VoiceAssistantProps> = ({ pageContext = "" }) => {
+const VoiceAssistant: React.FC<VoiceAssistantProps> = ({ pageContext = "", onNavigate }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [status, setStatus] = useState<'idle' | 'connecting' | 'listening' | 'speaking'>('idle');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [lastCommand, setLastCommand] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState('');
+  const [hasKey, setHasKey] = useState(false);
+  const [isEmergency, setIsEmergency] = useState(false);
   
   const audioContextInRef = useRef<AudioContext | null>(null);
   const audioContextOutRef = useRef<AudioContext | null>(null);
@@ -95,8 +103,21 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({ pageContext = "" }) => 
   const currentInputTranscription = useRef('');
   const currentOutputTranscription = useRef('');
 
-  // Browser SpeechRecognition for 'Open Assistant' command when idle
-  const recognitionRef = useRef<any>(null);
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio?.hasSelectedApiKey) {
+        setHasKey(await window.aistudio.hasSelectedApiKey());
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleOpenKeyDialog = async () => {
+    if (window.aistudio?.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      setHasKey(true);
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -104,75 +125,94 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({ pageContext = "" }) => 
     }
   }, [logs]);
 
-  const servicesInfo = SERVICES.map(s => `- ${s.title}: ${s.description}`).join('\n');
-  const doctorsInfo = DOCTORS.map(d => `- ${d.name} (${d.specialty}): ${d.description}`).join('\n');
+  const getSystemInstruction = () => {
+    const servicesInfo = SERVICES.map(s => `- ${s.title}: ${s.description}`).join('\n');
+    const doctorsInfo = DOCTORS.map(d => `- ${d.name} (${d.specialty}): ${d.description}. Available: ${d.timings}`).join('\n');
+    const bedsInfo = BEDS.map(b => `- ${b.department}: ${b.total - b.occupied} available.`).join('\n');
 
-  const getSystemInstruction = () => `
-You are the GIRM Hospital Virtual Receptionist. You are professional, helpful, and empathetic.
-Your job is to answer questions about GIRM Hospital.
+    return `
+You are the GIRM Hospital Lead AI Receptionist. You are friendly, professional, and very helpful.
+Your goal is to welcome users and guide them through our hospital services.
 
-CURRENT VIEW CONTEXT:
-${pageContext}
+### PERSONA:
+- Use very simple words.
+- Give short and clear replies.
+- Be polite. Say "Welcome to GIRM Hospital" often.
+- If you don't know something, say: "Please contact our hospital staff directly for that."
+- In case of an emergency, say: "PLEASE CALL OUR EMERGENCY NUMBER 1066 IMMEDIATELY."
 
-HOSPITAL SERVICES:
+### PROMOTION:
+- Proactively mention our "Centers of Excellence" like Cardiology and Robotics.
+- If a user asks for a doctor, suggest: "We have world-class experts like Dr. Ananya Sharma. Would you like to book an appointment?"
+
+### KEY DATA:
+- **Emergency**: Call 1066 (24/7).
+- **Address**: Main Road, Healthcare City. (GIRM Hospital Plaza).
+- **OPD Timings**: 9 AM to 6 PM (Mon-Sat).
+- **Visiting Hours**: 4 PM to 7 PM daily.
+- **Appointments**: User must click the "Book Now" button or go to the "Enroll" page.
+- **Reports**: Download from the "Patient Portal" after logging in.
+- **Fees**: Consultation starts at $50. Online payment is available in the dashboard.
+- **Bed Status**: 
+${bedsInfo}
+
+### DEPARTMENTS:
 ${servicesInfo}
 
-DOCTORS:
+### DOCTORS:
 ${doctorsInfo}
 
-ENROLLMENT PROCESS:
-Patients can enroll by clicking "Enroll Now" on the website.
+### COMMANDS:
+- "go to home"
+- "go to services"
+- "go to login"
+- "go to enroll" (for appointments)
+- "go to dashboard" (for reports)
 
-VOICE COMMANDS YOU MUST RECOGNIZE:
-- "show logs" or "open logs": Respond by confirming you are opening the logs.
-- "hide logs" or "close logs": Respond by confirming you are hiding the logs.
-- "close assistant" or "stop assistant": Respond by saying goodbye and the session will end.
+### RULES:
+- Never diagnose. Always say: "I recommend consulting our specialists."
+- Be brief. No long paragraphs.
+- If user sounds in pain, trigger the emergency alert.
 
-GUIDELINES:
-- Be concise and aware of the user's current view described in CURRENT VIEW CONTEXT.
-- Use a friendly, reassuring tone.
+CURRENT PAGE: ${pageContext}
 `;
+  };
 
   const processVoiceCommand = useCallback((text: string) => {
     const normalized = text.toLowerCase().trim();
     
-    if (normalized.includes('show logs') || normalized.includes('open logs')) {
-      setLastCommand('Opening logs...');
-      setShowLogs(true);
-      setTimeout(() => setLastCommand(null), 2000);
-      return true;
+    // Emergency Detection
+    const emergencyKeywords = ['pain', 'bleeding', 'accident', 'dying', 'emergency', 'help', 'heart attack'];
+    if (emergencyKeywords.some(k => normalized.includes(k))) {
+      setIsEmergency(true);
+      setLastCommand('EMERGENCY MODE ACTIVATED');
+      setTimeout(() => setIsEmergency(false), 10000);
     }
-    if (normalized.includes('hide logs') || normalized.includes('close logs')) {
-      setLastCommand('Hiding logs...');
-      setShowLogs(false);
-      setTimeout(() => setLastCommand(null), 2000);
-      return true;
+
+    if (onNavigate) {
+      if (normalized.includes('go to home')) { onNavigate('/'); return true; }
+      if (normalized.includes('go to services')) { onNavigate('/#services'); return true; }
+      if (normalized.includes('go to enroll') || normalized.includes('appointment')) { onNavigate('/enroll'); return true; }
+      if (normalized.includes('go to login')) { onNavigate('/login'); return true; }
+      if (normalized.includes('go to dashboard') || normalized.includes('portal')) { onNavigate('/dashboard'); return true; }
+      if (normalized.includes('go to reports')) { onNavigate('/dashboard'); return true; }
     }
-    if (normalized.includes('close assistant') || normalized.includes('stop assistant') || normalized.includes('goodbye assistant')) {
-      setLastCommand('Closing assistant...');
-      setTimeout(() => {
-        stopAssistant();
-        setLastCommand(null);
-      }, 1500);
-      return true;
-    }
+    
     return false;
-  }, []);
+  }, [onNavigate]);
 
   const startAssistant = async () => {
-    if (isActive) return;
-    
+    if (isActive) return sessionRef.current;
+    if (!hasKey) { await handleOpenKeyDialog(); }
+
     setStatus('connecting');
     setIsActive(true);
-    setIsOpen(true);
-    setLogs(prev => [...prev, { role: 'system', text: 'Connecting to Gemini Voice Engine...' }]);
+    setLogs(prev => [...prev, { role: 'system', text: 'Connecting to GIRM Front Desk...' }]);
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
       audioContextInRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       audioContextOutRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
@@ -189,27 +229,21 @@ GUIDELINES:
         callbacks: {
           onopen: () => {
             setStatus('listening');
-            setLogs(prev => [...prev, { role: 'system', text: 'Voice session established.' }]);
+            setLogs(prev => [...prev, { role: 'system', text: 'Receptionist is online.' }]);
             const source = audioContextInRef.current!.createMediaStreamSource(streamRef.current!);
             const scriptProcessor = audioContextInRef.current!.createScriptProcessor(4096, 1, 1);
-            
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createBlob(inputData);
-              sessionPromise.then(session => {
-                session.sendRealtimeInput({ media: pcmBlob });
-              });
+              sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
             };
-
             source.connect(scriptProcessor);
             scriptProcessor.connect(audioContextInRef.current!.destination);
           },
           onmessage: async (message: any) => {
-            // Handle Transcription
             if (message.serverContent?.inputTranscription) {
               const text = message.serverContent.inputTranscription.text;
               currentInputTranscription.current += text;
-              // Real-time command detection
               processVoiceCommand(text);
             }
             if (message.serverContent?.outputTranscription) {
@@ -226,23 +260,19 @@ GUIDELINES:
               }
             }
 
-            // Handle Audio
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
               setStatus('speaking');
               const ctx = audioContextOutRef.current!;
               nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
-              
               const buffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
               const source = ctx.createBufferSource();
               source.buffer = buffer;
               source.connect(ctx.destination);
-              
               source.onended = () => {
                 sourcesRef.current.delete(source);
                 if (sourcesRef.current.size === 0) setStatus('listening');
               };
-
               source.start(nextStartTimeRef.current);
               nextStartTimeRef.current += buffer.duration;
               sourcesRef.current.add(source);
@@ -255,16 +285,14 @@ GUIDELINES:
               setStatus('listening');
             }
           },
-          onerror: (e) => {
-            console.error('Gemini Live API Error:', e);
-            stopAssistant();
-          },
+          onerror: (e) => { console.error('AI Error:', e); stopAssistant(); },
           onclose: () => stopAssistant()
         }
       });
       sessionRef.current = sessionPromise;
+      return sessionPromise;
     } catch (err) {
-      console.error('Failed to initialize Voice Assistant:', err);
+      console.error('Init error:', err);
       stopAssistant();
     }
   };
@@ -272,177 +300,149 @@ GUIDELINES:
   const stopAssistant = () => {
     setIsActive(false);
     setStatus('idle');
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (audioContextInRef.current) {
-      audioContextInRef.current.close();
-      audioContextInRef.current = null;
-    }
-    if (audioContextOutRef.current) {
-      audioContextOutRef.current.close();
-      audioContextOutRef.current = null;
-    }
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    if (audioContextInRef.current) { audioContextInRef.current.close(); audioContextInRef.current = null; }
+    if (audioContextOutRef.current) { audioContextOutRef.current.close(); audioContextOutRef.current = null; }
     sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
     sourcesRef.current.clear();
     sessionRef.current?.then((s: any) => s.close());
     sessionRef.current = null;
-    setLogs(prev => [...prev, { role: 'system', text: 'Session ended.' }]);
   };
 
-  const toggleAssistant = () => {
-    if (isActive) stopAssistant();
-    else startAssistant();
+  const handleTextSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const text = inputValue.trim();
+    if (!text) return;
+    if (!hasKey) { await handleOpenKeyDialog(); }
+
+    setInputValue('');
+    setLogs(prev => [...prev, { role: 'user', text: text }]);
+    setIsOpen(true);
+    setShowLogs(true);
+    if (processVoiceCommand(text)) return;
+
+    let session = isActive ? await sessionRef.current : await startAssistant();
+    if (session) session.sendRealtimeInput({ text: text });
   };
-
-  // Setup passive listener for 'Open Assistant'
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition && !isActive) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0])
-          .map((result: any) => result.transcript)
-          .join('')
-          .toLowerCase();
-
-        if (transcript.includes('open assistant') || transcript.includes('start assistant')) {
-          startAssistant();
-          recognition.stop();
-        }
-      };
-
-      recognition.onerror = () => {
-        // Silently handle errors or restart
-      };
-
-      recognition.onend = () => {
-        if (!isActive) recognition.start();
-      };
-
-      recognition.start();
-      recognitionRef.current = recognition;
-    }
-
-    return () => {
-      if (recognitionRef.current) recognitionRef.current.stop();
-    };
-  }, [isActive]);
 
   return (
     <>
-      {/* Floating Action Button */}
-      <button
-        onClick={() => {
-          if (!isOpen) setIsOpen(true);
-          else toggleAssistant();
-        }}
-        className={`fixed bottom-8 right-8 z-[60] w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 ${
-          isActive ? 'bg-apollo-red' : 'bg-apollo-blue'
-        }`}
-        aria-label="Toggle Voice Assistant"
-      >
-        {isActive ? (
-          <Mic className="text-white w-7 h-7 animate-pulse" />
-        ) : (
-          <MessageSquare className="text-white w-7 h-7" />
-        )}
-      </button>
+      <div className="fixed bottom-8 right-8 z-[60] flex items-center space-x-3 pointer-events-none">
+        <div className="pointer-events-auto flex items-center bg-white rounded-full shadow-2xl border border-slate-200 p-1.5 transition-all focus-within:ring-2 focus-within:ring-apollo-blue group">
+          <form onSubmit={handleTextSubmit} className="flex items-center">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="How can I help you today?"
+              className="bg-transparent border-none outline-none px-6 py-2 text-sm text-apollo-blue font-medium w-0 group-hover:w-64 focus:w-64 transition-all duration-500 placeholder:text-slate-400"
+            />
+            {inputValue.trim() && (
+              <button type="submit" className="p-2 bg-apollo-blue text-white rounded-full hover:bg-apollo-red transition-colors mr-1">
+                <SendHorizontal className="w-4 h-4" />
+              </button>
+            )}
+          </form>
+          <button
+            onClick={() => { setIsOpen(true); startAssistant(); }}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${
+              isActive ? 'bg-apollo-red animate-pulse' : 'bg-apollo-blue'
+            } shadow-lg text-white hover:scale-110`}
+          >
+            {isActive ? <Mic className="w-5 h-5" /> : <UserCheck className="w-5 h-5" />}
+          </button>
+        </div>
+      </div>
 
-      {/* Assistant Modal */}
       {isOpen && (
-        <div className="fixed bottom-28 right-8 z-[60] w-[380px] bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden transform transition-all flex flex-col max-h-[600px] animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-apollo-blue p-6 text-white flex justify-between items-center shrink-0 border-b-4 border-apollo-red">
+        <div className="fixed bottom-28 right-8 z-[60] w-[400px] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform transition-all flex flex-col max-h-[650px] animate-in fade-in slide-in-from-bottom-4">
+          <div className={`p-6 text-white flex justify-between items-center shrink-0 border-b-4 ${isEmergency ? 'bg-red-600 border-red-800' : 'bg-apollo-blue border-apollo-red'}`}>
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-white/10 rounded">
-                <HeartPulse className="w-5 h-5 text-apollo-red" />
+                {isEmergency ? <ShieldAlert className="w-5 h-5 animate-bounce" /> : <Bot className="w-5 h-5" />}
               </div>
               <div>
-                <h3 className="font-black text-sm uppercase tracking-tighter">GIRM Voice Care</h3>
-                <p className="text-[9px] text-white/60 uppercase tracking-widest font-bold">Smart Medical Concierge</p>
+                <h3 className="font-black text-sm uppercase tracking-tighter">
+                   {isEmergency ? 'Emergency Help' : 'GIRM Front Desk'}
+                </h3>
+                <p className="text-[9px] text-white/60 uppercase tracking-widest font-bold">Always here to help</p>
               </div>
             </div>
-            <button 
-              onClick={() => { stopAssistant(); setIsOpen(false); }} 
-              className="hover:bg-apollo-red p-2 rounded transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <button onClick={() => setIsOpen(false)} className="hover:bg-black/20 p-2 rounded transition-colors"><X className="w-5 h-5" /></button>
           </div>
 
-          <div className="flex-grow overflow-hidden flex flex-col">
+          {isEmergency && (
+            <div className="bg-red-50 p-4 border-b border-red-100 flex items-center space-x-3">
+              <PhoneCall className="w-5 h-5 text-red-600" />
+              <p className="text-[11px] font-black text-red-800 uppercase tracking-tight">Call 1066 Now for Help!</p>
+            </div>
+          )}
+
+          <div className="flex-grow overflow-hidden flex flex-col bg-slate-50">
             {showLogs ? (
-              <div className="flex-grow overflow-y-auto p-4 space-y-3 bg-apollo-grey" ref={scrollRef}>
-                {logs.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 text-xs italic">
-                    Consultation logs will appear here.
-                  </div>
-                ) : (
-                  logs.map((log, i) => (
-                    <div key={i} className={`flex ${log.role === 'user' ? 'justify-end' : log.role === 'system' ? 'justify-center' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] p-3 rounded text-[11px] leading-relaxed shadow-sm ${
-                        log.role === 'user' 
-                          ? 'bg-apollo-blue text-white font-bold' 
-                          : log.role === 'system'
-                          ? 'bg-slate-200 text-slate-500 font-bold italic border-none text-[8px] uppercase tracking-wider'
-                          : 'bg-white text-slate-700 border border-slate-100 font-medium'
-                      }`}>
-                        {log.text}
-                      </div>
+              <div className="flex-grow overflow-y-auto p-5 space-y-4" ref={scrollRef}>
+                {logs.map((log, i) => (
+                  <div key={i} className={`flex ${log.role === 'user' ? 'justify-end' : log.role === 'system' ? 'justify-center' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] p-4 rounded shadow-sm text-[12px] leading-relaxed ${
+                      log.role === 'user' ? 'bg-apollo-blue text-white rounded-tr-none' : 
+                      log.role === 'system' ? 'bg-slate-200 text-slate-500 font-black italic text-[9px] uppercase tracking-wider py-1.5 px-4 rounded-full' : 
+                      'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+                    }`}>
+                      {log.text}
                     </div>
-                  ))
-                )}
+                  </div>
+                ))}
               </div>
             ) : (
-              <div className="flex-grow flex flex-col items-center justify-center p-8 text-center bg-white">
-                <div className="relative mb-10 h-24 w-24 flex items-center justify-center">
+              <div className="flex-grow flex flex-col items-center justify-center p-10 text-center bg-white relative">
+                <div className="relative mb-8 h-24 w-24 flex items-center justify-center">
                   {status === 'speaking' ? (
                     <div className="flex items-center space-x-1.5 h-12">
-                      {[...Array(8)].map((_, i) => (
-                        <div key={i} className="w-1.5 bg-apollo-red rounded-full animate-bounce" style={{ animationDelay: `${i * 0.1}s`, height: '100%' }} />
+                      {[...Array(6)].map((_, i) => (
+                        <div key={i} className={`w-1.5 rounded-full animate-bounce ${isEmergency ? 'bg-red-600' : 'bg-apollo-red'}`} style={{ animationDelay: `${i * 0.1}s`, height: '100%' }} />
                       ))}
                     </div>
                   ) : status === 'listening' ? (
-                    <div className="w-20 h-20 rounded-full bg-apollo-grey border-4 border-apollo-blue flex items-center justify-center animate-pulse">
-                      <Mic className="w-8 h-8 text-apollo-blue" />
+                    <div className="relative">
+                      <div className="absolute inset-0 rounded-full bg-apollo-blue/10 animate-ping" />
+                      <div className="w-20 h-20 rounded-full bg-apollo-grey border-4 border-apollo-blue flex items-center justify-center relative z-10">
+                        <Mic className="w-8 h-8 text-apollo-blue" />
+                      </div>
                     </div>
                   ) : (
-                    <Bot className="w-16 h-16 text-slate-200" />
+                    <Bot className="w-16 h-16 text-slate-100" />
                   )}
                 </div>
                 <h4 className="text-apollo-blue font-black text-xl mb-2 uppercase tracking-tighter">
-                  {status === 'idle' ? 'AI Health Desk' : status.toUpperCase()}
+                  {status === 'idle' ? 'Hello! I am your Receptionist' : status.toUpperCase()}
                 </h4>
-                <p className="text-slate-500 text-xs leading-relaxed max-w-[240px] mx-auto">
-                  {status === 'idle' ? 'Say "Open Assistant" to begin your voice consultation.' : 'How can our medical team assist you today?'}
+                <p className="text-slate-500 text-xs leading-relaxed max-w-[250px] mx-auto font-medium">
+                  {status === 'idle' ? 'Welcome to GIRM Hospital! Ask me about doctors, appointments, or emergency care.' : 'One moment, I am checking that for you...'}
                 </p>
+                
+                <div className="mt-8 grid grid-cols-2 gap-2">
+                   {['Emergency Call', 'Book Doctor', 'Bed Status', 'Our Location'].map(hint => (
+                     <button key={hint} onClick={() => { setInputValue(hint); handleTextSubmit(); }} className="text-[10px] bg-slate-50 hover:bg-apollo-blue hover:text-white px-3 py-2 rounded font-black uppercase tracking-wider transition-all border border-slate-100">
+                       {hint}
+                     </button>
+                   ))}
+                </div>
               </div>
             )}
           </div>
 
-          <div className="p-5 bg-apollo-grey border-t border-slate-100 flex flex-col space-y-4 shrink-0">
+          <div className="p-6 bg-apollo-grey border-t border-slate-200 flex flex-col space-y-4 shrink-0">
             <button
-              onClick={toggleAssistant}
-              className={`w-full py-4 rounded font-black text-xs uppercase tracking-widest flex items-center justify-center space-x-3 transition-all active:scale-95 shadow-xl ${
-                isActive 
-                  ? 'bg-apollo-red text-white shadow-apollo-red/20' 
-                  : 'bg-apollo-blue text-white shadow-apollo-blue/20'
+              onClick={() => { isActive ? stopAssistant() : startAssistant(); }}
+              className={`w-full py-4 rounded font-black text-[11px] uppercase tracking-[0.2em] flex items-center justify-center space-x-3 transition-all active:scale-95 shadow-xl ${
+                isActive ? 'bg-apollo-red text-white' : 'bg-apollo-blue text-white'
               }`}
             >
               {isActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              <span>{isActive ? 'Disconnect' : 'Start Voice Connect'}</span>
+              <span>{isActive ? 'Stop Listening' : 'Talk to Receptionist'}</span>
             </button>
-            <button 
-              onClick={() => setShowLogs(!showLogs)}
-              className="text-[10px] font-black uppercase text-apollo-blue tracking-widest text-center hover:text-apollo-red transition-colors"
-            >
-              {showLogs ? 'Back to Desk' : 'View Clinical Transcript'}
+            <button onClick={() => setShowLogs(!showLogs)} className="text-[10px] font-black uppercase text-apollo-blue tracking-widest text-center hover:text-apollo-red transition-colors">
+              {showLogs ? 'Back to Desk' : 'Show Chat History'}
             </button>
           </div>
         </div>

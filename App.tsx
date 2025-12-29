@@ -2,15 +2,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from './components/Navbar';
 import HeroSlider from './components/HeroSlider';
-import { AboutSection, ServicesSection, DoctorsSection, ContactSection } from './components/Sections';
+import { AboutSection, ServicesSection, DoctorsSection, ContactSection, BedAvailabilitySection, BlogSection } from './components/Sections';
 import EnrollmentForm from './components/EnrollmentForm';
 import AuthForms from './components/AuthForms';
 import Footer from './components/Footer';
 import VoiceAssistant from './components/VoiceAssistant';
 import ImageGenerator from './components/ImageGenerator';
 import VideoGenerator from './components/VideoGenerator';
+import { PatientDashboard, AdminPanel } from './components/Dashboards';
 import { User } from './types';
 import { SERVICES, DOCTORS } from './constants';
+// Fix: Import Icons from lucide-react to satisfy the use of Icons.PhoneCall etc.
+import * as Icons from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState(window.location.hash || '/');
@@ -41,7 +44,11 @@ const App: React.FC = () => {
   const handleLogin = (user: User) => {
     setUser(user);
     localStorage.setItem('girm_current_user', JSON.stringify(user));
-    handleNavigate('/');
+    if (user.role === 'admin') {
+      handleNavigate('/admin');
+    } else {
+      handleNavigate('/dashboard');
+    }
   };
 
   const handleLogout = () => {
@@ -53,76 +60,81 @@ const App: React.FC = () => {
   const pageContext = useMemo(() => {
     const hashOnly = currentPath.startsWith('#/') ? currentPath : '#/';
     
-    if (hashOnly === '#/enroll') {
-      return "The user is currently on the Patient Enrollment page. This section contains a form for patients to register their details (name, email, phone, DOB, gender) and select a hospital department (like Cardiology or Pediatrics) for an appointment.";
-    }
-    if (hashOnly === '#/visual-lab') {
-      return "The user is in the Visual Lab. This is an AI-powered image generation studio where medical visuals can be generated using prompts in 1K, 2K, or 4K resolutions.";
-    }
-    if (hashOnly === '#/video-lab') {
-      return "The user is in the Video Lab. This section allows users to generate professional, cinematic medical videos using the Veo 3 engine. Users can specify aspect ratios like 16:9 or 9:16.";
-    }
-    if (hashOnly === '#/login' || hashOnly === '#/signup') {
-      return "The user is on the authentication page, either logging in or creating a new account for the patient portal.";
-    }
+    if (hashOnly === '#/enroll') return "Patient enrollment and appointment booking page.";
+    if (hashOnly === '#/dashboard') return "Patient personal portal for records and appointments.";
+    if (hashOnly === '#/admin') return "Hospital administration command center.";
     
-    // Default/Home context
     const servicesList = SERVICES.map(s => s.title).join(', ');
-    const doctorsList = DOCTORS.map(d => d.name).join(', ');
-    return `The user is on the Homepage of GIRM Hospital. They can see information about 'Setting New Standards in Medical Excellence', 'Beds Capacity (500+)', 'Specialist Doctors (120+)'. 
-    Visible services include: ${servicesList}. 
-    Visible doctors include: ${doctorsList}. 
-    There is also a 'Contact Us' section with location details at Healthcare Plaza and phone number +1 (555) 123-4567.`;
+    return `Homepage of GIRM Hospital. Services: ${servicesList}. Specialists available across departments.`;
   }, [currentPath]);
 
   const renderContent = () => {
-    const hashOnly = currentPath.startsWith('#/') ? currentPath : '#/';
+    const hashOnly = currentPath.startsWith('#/') ? currentPath.replace('#', '') : currentPath;
 
-    if (hashOnly === '#/login') return <AuthForms mode="login" onAuthSuccess={handleLogin} />;
-    if (hashOnly === '#/signup') return <AuthForms mode="signup" onAuthSuccess={handleLogin} />;
-    if (hashOnly === '#/forgot') return <AuthForms mode="forgot" onAuthSuccess={handleLogin} />;
-    if (hashOnly === '#/enroll') return (
+    if (hashOnly === '/login') return <AuthForms mode="login" onAuthSuccess={handleLogin} />;
+    if (hashOnly === '/signup') return <AuthForms mode="signup" onAuthSuccess={handleLogin} />;
+    if (hashOnly === '/forgot') return <AuthForms mode="forgot" onAuthSuccess={handleLogin} />;
+    
+    if (hashOnly === '/dashboard' && user) {
+      return <PatientDashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
+    }
+    
+    if (hashOnly === '/admin' && user?.role === 'admin') {
+      return <AdminPanel user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
+    }
+
+    if (hashOnly === '/enroll') return (
       <div className="py-20 bg-slate-50 min-h-screen">
         <div className="max-w-4xl mx-auto px-4">
-          <EnrollmentForm user={user} onSuccess={() => handleNavigate('/')} />
+          <EnrollmentForm user={user} onSuccess={() => handleNavigate('/dashboard')} />
         </div>
       </div>
     );
-    if (hashOnly === '#/visual-lab') return (
-      <div className="py-20 bg-slate-50 min-h-screen">
-        <ImageGenerator />
-      </div>
-    );
-    if (hashOnly === '#/video-lab') return (
-      <div className="py-20 bg-slate-50 min-h-screen">
-        <VideoGenerator />
-      </div>
-    );
+
+    if (hashOnly === '/visual-lab') return <div className="py-20 bg-slate-50 min-h-screen"><ImageGenerator /></div>;
+    if (hashOnly === '/video-lab') return <div className="py-20 bg-slate-50 min-h-screen"><VideoGenerator /></div>;
 
     return (
       <main>
         <HeroSlider onEnroll={() => handleNavigate('/enroll')} />
         <AboutSection />
         <ServicesSection />
+        <BedAvailabilitySection />
         <DoctorsSection />
+        <BlogSection />
         <ContactSection />
       </main>
     );
   };
 
+  const isDashboard = currentPath.includes('dashboard') || currentPath.includes('admin');
+
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar 
-        user={user} 
-        onLogout={handleLogout} 
-        onNavigate={handleNavigate}
-        currentPath={currentPath}
-      />
+      {!isDashboard && (
+        <Navbar 
+          user={user} 
+          onLogout={handleLogout} 
+          onNavigate={handleNavigate}
+          currentPath={currentPath}
+        />
+      )}
       <div className="flex-grow">
         {renderContent()}
       </div>
-      <VoiceAssistant pageContext={pageContext} />
-      <Footer />
+      <VoiceAssistant pageContext={pageContext} onNavigate={handleNavigate} />
+      {!isDashboard && <Footer />}
+      
+      {/* Fixed Emergency Trigger */}
+      <a href="tel:1066" className="fixed bottom-32 left-8 z-[50] bg-apollo-red text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-all flex items-center space-x-2">
+         <div className="w-10 h-10 flex items-center justify-center animate-pulse"><Icons.PhoneCall className="w-6 h-6" /></div>
+         <span className="pr-4 font-black text-xs uppercase tracking-widest hidden md:block">Emergency: 1066</span>
+      </a>
+      
+      {/* WhatsApp Support Trigger */}
+      <a href="https://wa.me/15551234567" target="_blank" rel="noopener noreferrer" className="fixed bottom-52 left-8 z-[50] bg-green-500 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-all">
+         <Icons.MessageCircle className="w-6 h-6" />
+      </a>
     </div>
   );
 };
