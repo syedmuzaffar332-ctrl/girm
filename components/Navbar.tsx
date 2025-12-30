@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Menu, X, HeartPulse, UserCircle, Sparkles, Video, PhoneCall, MapPin, Globe, Key, CheckCircle, AlertCircle, LayoutDashboard } from 'lucide-react';
+import { Menu, X, HeartPulse, UserCircle, Sparkles, Video, PhoneCall, MapPin, Globe, Key, CheckCircle, AlertCircle, LayoutDashboard, VideoIcon } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
@@ -34,9 +34,8 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onNavigate, currentPath
 
   const navLinks = [
     { name: 'Home', path: '/' },
-    { name: 'About', path: '/#about' },
-    { name: 'Services', path: '/#services' },
     { name: 'Image Lab', path: '/visual-lab', icon: <Sparkles className="w-3 h-3 text-apollo-blue" /> },
+    { name: 'Video Insights', path: '/video-analysis', icon: <VideoIcon className="w-3 h-3 text-apollo-red" /> },
     { name: 'Video Lab', path: '/video-lab', icon: <Video className="w-3 h-3 text-apollo-red" /> },
     { name: 'Contact', path: '/#contact' },
   ];

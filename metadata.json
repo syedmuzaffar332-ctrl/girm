@@ -3,6 +3,7 @@
   "description": "A comprehensive, professional hospital management and patient enrollment portal featuring secure authentication, department-specific enrollments, and modern UI/UX.",
   "requestFramePermissions": [
     "geolocation",
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

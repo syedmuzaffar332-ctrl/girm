@@ -1,9 +1,10 @@
 
-import { User, Enrollment, LabReport } from '../types';
+import { User, Enrollment, LabReport, Feedback } from '../types';
 
 const USERS_KEY = 'girm_hospital_users';
 const ENROLLMENTS_KEY = 'girm_hospital_enrollments';
 const REPORTS_KEY = 'girm_hospital_reports';
+const FEEDBACK_KEY = 'girm_hospital_feedback';
 
 // Helper to simulate network latency
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -60,6 +61,17 @@ export const db = {
     }
   },
 
+  updateEnrollmentNotes: async (id: string, diagnosis: string, notes: string): Promise<void> => {
+    await delay(600);
+    const enrollments = db.getEnrollments();
+    const index = enrollments.findIndex(e => e.id === id);
+    if (index !== -1) {
+      enrollments[index].doctorDiagnosis = diagnosis;
+      enrollments[index].clinicalNotes = notes;
+      localStorage.setItem(ENROLLMENTS_KEY, JSON.stringify(enrollments));
+    }
+  },
+
   // Lab Reports
   getReports: (): LabReport[] => {
     const data = localStorage.getItem(REPORTS_KEY);
@@ -75,5 +87,37 @@ export const db = {
     const reports = db.getReports();
     reports.push(report);
     localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
+  },
+
+  // Feedback
+  getFeedback: (): Feedback[] => {
+    const data = localStorage.getItem(FEEDBACK_KEY);
+    return data ? JSON.parse(data) : [
+      {
+        id: '1',
+        patientName: 'Sarah J.',
+        department: 'Cardiology',
+        rating: 5,
+        comment: 'Exceptional care from Dr. Ananya. The robotic surgery was quick and recovery was smooth!',
+        date: '2024-11-20',
+        isVerified: true
+      },
+      {
+        id: '2',
+        patientName: 'Michael R.',
+        department: 'Pediatrics',
+        rating: 4,
+        comment: 'Very professional staff. The pediatric ward is child-friendly and stress-free.',
+        date: '2024-11-18',
+        isVerified: true
+      }
+    ];
+  },
+
+  saveFeedback: async (feedback: Feedback): Promise<void> => {
+    await delay(1000);
+    const list = db.getFeedback();
+    list.unshift(feedback);
+    localStorage.setItem(FEEDBACK_KEY, JSON.stringify(list));
   }
 };
